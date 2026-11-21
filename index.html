@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recipe Rescue</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" id="theme-meta" content="#FFF8EF">
+  <meta name="description" content="Recipe Rescue: turn leftover ingredients into recipes and cut food waste.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <!-- ============ ONBOARDING ============ -->
+  <div id="onboarding" class="onboarding" role="dialog" aria-modal="true" aria-labelledby="ob-title" hidden>
+    <div class="float-emojis" aria-hidden="true">
+      <span style="left:6%;top:12%;animation-delay:0s">🍅</span>
+      <span style="left:88%;top:10%;animation-delay:1.2s">🥕</span>
+      <span style="left:12%;top:78%;animation-delay:2.1s">🧄</span>
+      <span style="left:84%;top:74%;animation-delay:.6s">🌶️</span>
+      <span style="left:46%;top:4%;animation-delay:1.8s">🥬</span>
+      <span style="left:50%;top:90%;animation-delay:2.7s">🧀</span>
+    </div>
+
+    <div class="ob-card">
+      <div class="ob-top">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">🍅</span><span>Recipe Rescue</span></div>
+        <button class="btn btn-ghost btn-sm" id="ob-skip" type="button">Skip for now</button>
+      </div>
+
+      <div class="progress" role="progressbar" aria-label="Setup progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1">
+        <div class="progress-fill" id="ob-fill"></div>
+      </div>
+
+      <div id="ob-body" class="ob-body"></div>
+
+      <div class="ob-actions">
+        <button class="btn btn-ghost" id="ob-back" type="button">← Back</button>
+        <button class="btn btn-primary" id="ob-next" type="button">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN APP ============ -->
+  <div id="app" class="app" hidden>
+
+    <!-- Desktop sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <button type="button" class="brand-mark brand-toggle" id="side-toggle"
+          aria-expanded="true" aria-controls="side-nav"
+          aria-label="Collapse sidebar" title="Collapse sidebar">🍅</button>
+        <span class="brand-text">Recipe Rescue</span>
+      </div>
+      <nav id="side-nav" class="side-nav" aria-label="Main navigation"></nav>
+      <div class="side-foot">
+        <button class="btn btn-ghost btn-block js-prefs" type="button"></button>
+        <button class="btn btn-ghost btn-block js-theme" type="button"></button>
+      </div>
+    </aside>
+
+    <!-- Mobile top bar -->
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">🍅</span><span>Recipe Rescue</span></div>
+      <div class="topbar-actions">
+        <button class="btn-icon js-prefs" type="button" aria-label="Open settings"></button>
+        <button class="btn-icon js-theme" type="button" aria-label="Toggle dark mode"></button>
+      </div>
+    </header>
+
+    <main id="main" class="main" tabindex="-1">
+
+      <section id="screen-pantry" class="screen" aria-labelledby="h-pantry">
+        <header class="screen-head">
+          <p class="eyebrow" id="greeting">Welcome</p>
+          <h1 id="h-pantry">Your Pantry</h1>
+          <p class="lead">Drag ingredients between bins and into your recipe cart.</p>
+        </header>
+        <div id="pantry-root"></div>
+      </section>
+
+      <section id="screen-add" class="screen" aria-labelledby="h-add">
+        <header class="screen-head">
+          <h1 id="h-add">Add Ingredients</h1>
+          <p class="lead">Snap a photo, type, or speak what you have.</p>
+        </header>
+        <div id="add-root"></div>
+      </section>
+
+      <section id="screen-recipes" class="screen" aria-labelledby="h-recipes">
+        <header class="screen-head">
+          <h1 id="h-recipes">Recipes</h1>
+          <p class="lead">Ideas built around what you already have.</p>
+        </header>
+        <div id="recipes-root"></div>
+      </section>
+
+      <section id="screen-dashboard" class="screen" aria-labelledby="h-dash">
+        <header class="screen-head">
+          <h1 id="h-dash">Your Impact</h1>
+          <p class="lead">See how much food you've kept out of the bin.</p>
+        </header>
+        <div id="dashboard-root"></div>
+      </section>
+
+      <section id="screen-shopping" class="screen" aria-labelledby="h-shop">
+        <header class="screen-head">
+          <h1 id="h-shop">Shopping List</h1>
+          <p class="lead">Missing ingredients, collected for you.</p>
+        </header>
+        <div id="shopping-root"></div>
+      </section>
+
+      <section id="screen-favorites" class="screen" aria-labelledby="h-fav">
+        <header class="screen-head">
+          <h1 id="h-fav">Saved &amp; History</h1>
+          <p class="lead">Your favourite recipes and what you've cooked.</p>
+        </header>
+        <div id="favorites-root"></div>
+      </section>
+
+    </main>
+
+    <!-- Mobile bottom tab bar -->
+    <nav id="tabbar" class="tabbar" aria-label="Main navigation (mobile)"></nav>
+  </div>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Load order matters: data first, app last -->
+     <!-- Load order matters: library, data, then app last -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+  <script src="data.js"></script>
+  <script src="ai.js"></script>
+  <script src="pantry.js"></script>
+  <script src="add.js"></script>
+  <script src="recipes.js"></script>
+  <script src="screens.js"></script>
+  <script src="settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

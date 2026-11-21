@@ -261,13 +261,14 @@
       <p class="form-error" id="shop-err" role="alert"></p>`;
 
     if (!list.length) {
-      html += `<div class="shop-actions"><span class="muted" role="status">${todo.length} to buy · ${done.length} in basket</span><span class="spacer"></span>
-          ${navigator.share ? `<button type="button" class="btn btn-primary btn-sm" data-act="share"${todo.length ? '' : ' disabled'}>${svg('share')} Share</button>` : ''}
-          <button type="button" class="btn btn-ghost btn-sm" data-act="copy"${todo.length ? '' : ' disabled'}>${svg('copy')} Copy list</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-act="clear-done"${done.length ? '' : ' disabled'}>Clear bought</button></div>`;
+      html += `<div class="empty-state"><div class="empty-emoji" aria-hidden="true">🛒</div><h2>Your list is empty</h2>
+        <p>Add items above, or open a recipe and choose “Add to shopping list” to collect what you’re missing.</p>
+        <div class="empty-actions"><button type="button" class="btn btn-primary" data-act="recipes">Browse recipes</button></div></div>`;
     } else {
+      const off = todo.length ? '' : ' disabled';
       html += `<div class="shop-actions"><span class="muted" role="status">${todo.length} to buy · ${done.length} in basket</span><span class="spacer"></span>
-          <button type="button" class="btn btn-ghost btn-sm" data-act="copy"${todo.length ? '' : ' disabled'}>${svg('copy')} Copy list</button>
+          <button type="button" class="btn btn-primary btn-sm" data-act="share"${off}>${svg('share')} Share</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="copy"${off}>${svg('copy')} Copy list</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="clear-done"${done.length ? '' : ' disabled'}>Clear bought</button></div>`;
       groups.forEach((g) => { html += `<h2 class="cat-title">${g.c.emoji} ${g.c.label}</h2><ul class="shop-list">${g.items.map(row).join('')}</ul>`; });
       if (!todo.length) html += '<p class="muted" style="margin-top:18px">Everything is in your basket. 🎉</p>';

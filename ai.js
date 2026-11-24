@@ -1,18 +1,19 @@
 /* =========================================================
    ai.js - talks to the Gemini API (or runs Demo mode)
    - Key is stored in this browser's localStorage, NOT in the code
-   - The model is auto-detected from what your key can use
+   - Models are auto-detected; if one is busy or retired, the next is tried
    Exposes window.AI
    ========================================================= */
 (() => {
   'use strict';
 
   const KEY_STORAGE = 'recipeRescue_apiKey';
-  const MODEL_STORAGE = 'recipeRescue_model';
+  const MODEL_STORAGE = 'recipeRescue_model';     // last model that worked
+  const LIST_STORAGE = 'recipeRescue_models';     // usable models for this key
   const BASE = 'https://generativelanguage.googleapis.com/v1beta';
-  /* tried in this order; the first one your key can use wins */
-  const PREFERRED = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+  const PREFERRED = ['gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
   const NOT_TEXT = /(tts|live|image|audio|embedding|robotics|computer|research|veo|lyria|imagen|omni|learnlm|gemma|translate|pro)/i;
+  const MAX_TRIES = 5;
 
   class AIError extends Error { constructor(m, code) { super(m); this.code = code; } }
 
@@ -21,28 +22,32 @@
     set: (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } },
     del: (k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const getKey = () => store.get(KEY_STORAGE);
-  const setKey = (k) => { store.set(KEY_STORAGE, String(k).trim()); store.del(MODEL_STORAGE); };
-  const clearKey = () => { store.del(KEY_STORAGE); store.del(MODEL_STORAGE); };
+  const setKey = (k) => { store.set(KEY_STORAGE, String(k).trim()); store.del(MODEL_STORAGE); store.del(LIST_STORAGE); };
+  const clearKey = () => { store.del(KEY_STORAGE); store.del(MODEL_STORAGE); store.del(LIST_STORAGE); };
   const hasKey = () => getKey().length > 20;
 
-  /* ask Google which models this key can use, then pick the best text/vision one */
-  async function findModel(key, force = false) {
-    const cached = store.get(MODEL_STORAGE);
-    if (cached && !force) return cached;
+  /* every text model this key can use, best first */
+  async function listModels(key) {
+    try {
+      const cached = JSON.parse(store.get(LIST_STORAGE));
+      if (Array.isArray(cached) && cached.length) return cached;
+    } catch (e) { /* ignore */ }
     try {
       const res = await fetch(`${BASE}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
       if (res.ok) {
         const data = await res.json();
-        const ok = (data.models || [])
+        const rank = (n) => { const i = PREFERRED.indexOf(n); return i === -1 ? 99 : i; };
+        const ok = [...new Set((data.models || [])
           .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-          .map((m) => m.name.replace('models/', ''));
-        const pick = PREFERRED.find((p) => ok.includes(p))
-          || ok.find((n) => /^gemini-.*flash/i.test(n) && !NOT_TEXT.test(n));
-        if (pick) { store.set(MODEL_STORAGE, pick); return pick; }
+          .map((m) => m.name.replace('models/', ''))
+          .filter((n) => /^gemini-/i.test(n) && !NOT_TEXT.test(n) && (PREFERRED.includes(n) || /flash/i.test(n))))]
+          .sort((a, b) => rank(a) - rank(b));
+        if (ok.length) { store.set(LIST_STORAGE, JSON.stringify(ok)); return ok; }
       }
-    } catch (e) { /* fall through to the default */ }
-    return PREFERRED[0];
+    } catch (e) { /* fall through to the defaults */ }
+    return PREFERRED;
   }
 
   async function send(key, model, parts, maxTokens, json) {
@@ -59,47 +64,65 @@
         })
       });
     } catch (e) {
-      throw new AIError(e.name === 'AbortError'
-        ? 'The AI took too long to respond. Please try again.'
-        : 'Couldn’t reach the AI service. Check your internet connection.');
+      if (e.name === 'AbortError') throw new AIError('The AI took too long to respond. Please try again.', 'timeout');
+      throw new AIError('Couldn’t reach the AI service. Check your internet connection.', 'network');
     } finally { clearTimeout(timer); }
   }
 
-  /* One reusable function for every AI request (photo now, recipes in Stage 4).
+  async function failure(res) {
+    let detail = '';
+    try { detail = (await res.json()).error.message || ''; } catch (e) { /* ignore */ }
+    const rejected = res.status === 400 && /api key/i.test(detail);
+    const msg = rejected ? 'Your API key was rejected. Open AI settings and check it.' : ({
+      403: 'This API key isn’t allowed to use that model. Check the key in AI Studio.',
+      404: 'No compatible AI model was found for this key. Open AI Studio and check that the key works there.',
+      413: 'That image is too large. Try a smaller photo.',
+      429: 'Too many requests right now (free-tier limit). Wait a minute and try again.',
+      500: 'The AI service had a hiccup. Please try again.',
+      503: 'The AI service is busy. Please try again in a moment.'
+    }[res.status] || `The AI service returned an error (${res.status}). ${detail}`);
+    return new AIError(msg, rejected ? 'key' : '');
+  }
+
+  /* One reusable function for every AI request.
      Input: [{type:'text',text}, {type:'image',source:{media_type,data}}] */
   async function call(content, maxTokens = 1024, opts = {}) {
     const key = getKey();
     if (!key) throw new AIError('No API key set. Open AI settings to add one.');
-
     const parts = content.map((b) => b.type === 'image'
       ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } }
       : { text: b.text });
 
-    let model = await findModel(key);
-    let res = await send(key, model, parts, maxTokens, opts.json);
-    if (res.status === 404) {                       // saved model was retired: look again
-      model = await findModel(key, true);
-      res = await send(key, model, parts, maxTokens, opts.json);
-    }
+    let models = await listModels(key);
+    const lastOk = store.get(MODEL_STORAGE);
+    if (lastOk && models.includes(lastOk)) models = [lastOk, ...models.filter((m) => m !== lastOk)];
+    const queue = [...models, ...models];
+    const dead = new Set();
+    let err = null, tries = 0;
 
-    if (!res.ok) {
-      let detail = '';
-      try { detail = (await res.json()).error.message || ''; } catch (e) { /* ignore */ }
-      let msg = {
-        403: 'This API key isn’t allowed to use that model. Check the key in AI Studio.',
-        404: 'No compatible AI model was found for this key. Open AI Studio and check that the key works there.',
-        413: 'That image is too large. Try a smaller photo.',
-        429: 'Too many requests right now (free-tier limit). Wait a minute and try again.',
-        500: 'The AI service had a hiccup. Please try again.',
-        503: 'The AI service is busy. Please try again in a moment.'
-      }[res.status];
-      const rejected = res.status === 400 && /api key/i.test(detail);
-      if (rejected) msg = 'Your API key was rejected. Open AI settings and check it.';
-      throw new AIError(msg || `The AI service returned an error (${res.status}). ${detail}`, rejected ? 'key' : '');
+    for (let i = 0; i < queue.length && tries < MAX_TRIES; i++) {
+      const m = queue[i];
+      if (dead.has(m)) continue;
+      tries++;
+      let res;
+      try { res = await send(key, m, parts, maxTokens, opts.json); }
+      catch (e) { err = e; if (e.code === 'timeout') continue; throw e; }
+      if (res.ok) {
+        store.set(MODEL_STORAGE, m);
+        const data = await res.json();
+        const out = ((data.candidates || [])[0] || {}).content;
+        return ((out && out.parts) || []).map((p) => p.text || '').join('\n').trim();
+      }
+      err = await failure(res);
+      if (res.status === 404) {                       // retired for this key: remember and skip it from now on
+        dead.add(m); tries--;
+        store.set(LIST_STORAGE, JSON.stringify(models.filter((x) => !dead.has(x))));
+        continue;
+      }
+      if (![429, 500, 503].includes(res.status)) throw err;   // key or request problems: other models won't help
+      await sleep(600 * tries);
     }
-    const data = await res.json();
-    const out = ((data.candidates || [])[0] || {}).content;
-    return ((out && out.parts) || []).map((p) => p.text || '').join('\n').trim();
+    throw err || new AIError('The AI service is busy. Please try again in a moment.');
   }
 
   /* pull JSON out of a reply even if the model wrapped it in ``` fences */
